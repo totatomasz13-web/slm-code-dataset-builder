@@ -14,3 +14,4 @@ data/repositories/
 data/cleaned/
 data/datasets/
 logs/
+settings.json

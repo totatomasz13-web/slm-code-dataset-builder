@@ -28,7 +28,7 @@ SEARCH_QUERIES = [
 
 MAX_REPOS_PER_QUERY = 100
 MIN_STARS = 100
-MAX_CLONE_SIZE_MB = 500
+MAX_CLONE_SIZE_MB = 5000
 
 IGNORED_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv", "env",

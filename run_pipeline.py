@@ -30,7 +30,7 @@ from version import VERSION, REPO, BRANCH
 DEFAULT_SETTINGS = {
     "github_token": "",
     "max_stars": 500,
-    "max_clone_size_mb": 500,
+    "max_clone_size_mb": 5000,
     "clone_workers": 8,
     "clone_timeout": 120,
     "auto_update": True,
