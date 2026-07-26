@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 SLM Code Dataset Builder — Clone Repos
-Równoległe klonowanie repo z GitHub (shallow clone).
-Obsługuje wznawianie, limit rozmiaru, timeout.
+Rownolegle klonowanie repo z GitHub (shallow clone).
+Obsluguje wznawianie, limit rozmiaru, timeout.
 """
 
 import json
@@ -15,11 +15,19 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import REPOS_JSON, REPOS_DIR, LOGS_DIR, GITHUB_TOKEN, MAX_CLONE_SIZE_MB
+from config import REPOS_JSON, REPOS_DIR, LOGS_DIR
 
+SETTINGS_FILE = Path(__file__).resolve().parent.parent / "settings.json"
 CLONE_LOG = LOGS_DIR / "clone_log.json"
-MAX_WORKERS = 8
-CLONE_TIMEOUT = 120
+
+
+def load_settings():
+    defaults = {"github_token": "", "max_clone_size_mb": 500, "clone_workers": 8, "clone_timeout": 120}
+    if SETTINGS_FILE.exists():
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+            defaults.update(saved)
+    return defaults
 
 
 def load_clone_log():
@@ -38,7 +46,7 @@ def repo_dir_name(full_name):
     return full_name.replace("/", "_").replace("\\", "_")
 
 
-def clone_repo(repo):
+def clone_repo(repo, settings):
     full_name = repo["full_name"]
     target = REPOS_DIR / repo_dir_name(full_name)
 
@@ -46,17 +54,18 @@ def clone_repo(repo):
         return full_name, True, "exists"
 
     size_kb = repo.get("size_kb", 0)
-    if size_kb > MAX_CLONE_SIZE_MB * 1024:
+    if size_kb > settings["max_clone_size_mb"] * 1024:
         return full_name, False, "too_large"
 
     clone_url = repo.get("clone_url", "")
-    if GITHUB_TOKEN:
-        clone_url = clone_url.replace("https://", f"https://x-access-token:{GITHUB_TOKEN}@")
+    token = settings.get("github_token", "")
+    if token:
+        clone_url = clone_url.replace("https://", f"https://x-access-token:{token}@")
 
     cmd = ["git", "clone", "--depth", "1", "--single-branch", "--filter=blob:none", clone_url, str(target)]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=CLONE_TIMEOUT)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=settings["clone_timeout"])
         if result.returncode != 0:
             return full_name, False, f"git_error: {result.stderr[:80]}"
         return full_name, True, "cloned"
@@ -73,6 +82,8 @@ def clone_all():
         print("ERROR: repos.json not found. Run github_crawler.py first.")
         return
 
+    settings = load_settings()
+
     with open(REPOS_JSON, "r", encoding="utf-8") as f:
         repos = json.load(f)
 
@@ -83,15 +94,15 @@ def clone_all():
 
     print(f"Clone Repos — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Total: {len(repos)} | Done: {len(to_skip)} | Pending: {len(pending)}")
-    print(f"Workers: {MAX_WORKERS} | Timeout: {CLONE_TIMEOUT}s\n")
+    print(f"Workers: {settings['clone_workers']} | Timeout: {settings['clone_timeout']}s\n")
 
     cloned = 0
     failed = 0
     skipped = 0
     total = len(pending)
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(clone_repo, repo): repo for repo in pending}
+    with ThreadPoolExecutor(max_workers=settings["clone_workers"]) as executor:
+        futures = {executor.submit(clone_repo, repo, settings): repo for repo in pending}
 
         for i, future in enumerate(as_completed(futures), 1):
             name, ok, reason = future.result()

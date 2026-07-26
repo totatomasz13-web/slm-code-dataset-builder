@@ -8,24 +8,35 @@ Supports: token auth, rate-limit handling, resume from checkpoint.
 import json
 import time
 import sys
+import os
 import requests
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import (
-    GITHUB_TOKEN, SEARCH_QUERIES, MAX_REPOS_PER_QUERY,
-    MIN_STARS, REPOS_JSON, LOGS_DIR
-)
+from config import SEARCH_QUERIES, MAX_REPOS_PER_QUERY, REPOS_JSON, LOGS_DIR
+
+SETTINGS_FILE = Path(__file__).resolve().parent.parent / "settings.json"
+
+
+def load_settings():
+    defaults = {"github_token": "", "max_stars": 500}
+    if SETTINGS_FILE.exists():
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+            defaults.update(saved)
+    token = defaults.get("github_token") or os.environ.get("GITHUB_TOKEN", "")
+    defaults["github_token"] = token
+    return defaults
 
 API_BASE = "https://api.github.com"
 CHECKPOINT_FILE = LOGS_DIR / "crawler_checkpoint.json"
 
 
-def get_headers():
+def get_headers(token):
     headers = {"Accept": "application/vnd.github+json"}
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
@@ -50,7 +61,7 @@ def wait_for_rate_limit(resp):
     return False
 
 
-def search_repos(query, page=1, per_page=30):
+def search_repos(query, token, page=1, per_page=30):
     url = f"{API_BASE}/search/repositories"
     params = {
         "q": query,
@@ -59,10 +70,10 @@ def search_repos(query, page=1, per_page=30):
         "page": page,
         "per_page": per_page,
     }
-    resp = requests.get(url, headers=get_headers(), params=params, timeout=30)
+    resp = requests.get(url, headers=get_headers(token), params=params, timeout=30)
 
     if wait_for_rate_limit(resp):
-        return search_repos(query, page, per_page)
+        return search_repos(query, token, page, per_page)
 
     resp.raise_for_status()
     return resp.json()
@@ -93,12 +104,17 @@ def save_repos(repos):
 
 
 def crawl():
+    settings = load_settings()
+    token = settings["github_token"]
+    min_stars = settings["max_stars"]
+
     checkpoint = load_checkpoint()
     existing_repos = load_existing_repos()
     existing_names = {r["full_name"] for r in existing_repos}
 
     print(f"GitHub Crawler — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Token: {'SET' if GITHUB_TOKEN else 'NOT SET (60 req/hr limit)'}")
+    print(f"Token: {'SET' if token else 'NOT SET (60 req/hr limit)'}")
+    print(f"Min stars: {min_stars}")
     print(f"Already collected: {len(existing_repos)} repos\n")
 
     new_count = 0
@@ -114,7 +130,7 @@ def crawl():
 
         while query_count < MAX_REPOS_PER_QUERY:
             try:
-                data = search_repos(query, page=page, per_page=30)
+                data = search_repos(query, token, page=page, per_page=30)
             except requests.RequestException as e:
                 print(f"  Error: {e}. Retrying in 30s...")
                 time.sleep(30)
@@ -126,7 +142,7 @@ def crawl():
 
             for item in items:
                 stars = item.get("stargazers_count", 0)
-                if stars < MIN_STARS:
+                if stars < min_stars:
                     continue
                 if item["full_name"] in existing_names:
                     continue
