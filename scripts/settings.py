@@ -18,7 +18,7 @@ DEFAULT_SETTINGS = {
     "github_token": "",
     "max_stars": 500,
     "max_clone_size_mb": 5000,
-    "clone_workers": 8,
+    "clone_workers": 16,
     "clone_timeout": 120,
     "auto_update": True,
 }
