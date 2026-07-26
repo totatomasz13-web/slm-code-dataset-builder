@@ -273,7 +273,7 @@ STEPS = [
         "id": 2,
         "name": "Clone Repos",
         "script": "clone_repos.py",
-        "desc": "Sklonuje repozytoria (rownoledge, 8 workerow)",
+        "desc": "Sklonuje repozytoria (rownoledge, 16 workerow)",
         "depends": [1],
     },
     {
